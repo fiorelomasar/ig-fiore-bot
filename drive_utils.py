@@ -1,99 +1,69 @@
-"""
-Funciones para listar, descargar, subir y mover archivos en Google Drive
-usando una cuenta de servicio (service account).
-"""
+name: Publicar posts de Instagram
 
-import io
-import os
-import base64
-import json
+on:
+  schedule:
+    # Horarios en UTC (Argentina = UTC-3)
+    - cron: "0 11 * * *"   # 08:00 ART -> desayuno
+    - cron: "0 15 * * *"   # 12:00 ART -> almuerzo
+    - cron: "0 18 * * *"   # 15:00 ART -> merienda
+    - cron: "0 21 * * *"   # 18:00 ART -> cena
+  workflow_dispatch:
+    inputs:
+      post_slot:
+        description: "Franja horaria para probar manualmente"
+        required: false
+        type: choice
+        options:
+          - desayuno
+          - almuerzo
+          - merienda
+          - cena
+        default: desayuno
 
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
-from google.oauth2 import service_account
+permissions:
+  contents: write   # necesario para que el script pueda commitear/pushear temp_hosting
 
-SCOPES = ["https://www.googleapis.com/auth/drive"]
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      - name: Determinar franja horaria (POST_SLOT)
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "POST_SLOT=${{ inputs.post_slot }}" >> "$GITHUB_ENV"
+          else
+            case "${{ github.event.schedule }}" in
+              "0 11 * * *") echo "POST_SLOT=desayuno" >> "$GITHUB_ENV" ;;
+              "0 15 * * *") echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
+              "0 18 * * *") echo "POST_SLOT=merienda" >> "$GITHUB_ENV" ;;
+              "0 21 * * *") echo "POST_SLOT=cena" >> "$GITHUB_ENV" ;;
+              *) echo "POST_SLOT=" >> "$GITHUB_ENV" ;;
+            esac
+          fi
 
-def _load_credentials():
-    """
-    Carga las credenciales de la cuenta de servicio desde la variable de entorno
-    GOOGLE_SERVICE_ACCOUNT_JSON_B64 (el JSON completo codificado en base64).
-    """
-    b64 = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON_B64")
-    if not b64:
-        raise RuntimeError(
-            "Falta la variable de entorno GOOGLE_SERVICE_ACCOUNT_JSON_B64 "
-            "con el JSON de la cuenta de servicio (en base64)."
-        )
-    info = json.loads(base64.b64decode(b64))
-    return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
 
-def get_drive_service():
-    creds = _load_credentials()
-    return build("drive", "v3", credentials=creds)
-
-
-def list_files(service, folder_id, valid_extensions=None):
-    """Devuelve lista de dicts {id, name, createdTime} de archivos en una carpeta (no incluye subcarpetas)."""
-    query = f"'{folder_id}' in parents and trashed = false"
-    results = []
-    page_token = None
-    while True:
-        response = service.files().list(
-            q=query,
-            spaces="drive",
-            fields="nextPageToken, files(id, name, mimeType, createdTime)",
-            pageToken=page_token,
-        ).execute()
-        for f in response.get("files", []):
-            if f["mimeType"] == "application/vnd.google-apps.folder":
-                continue
-            if valid_extensions and not f["name"].lower().endswith(valid_extensions):
-                continue
-            results.append({"id": f["id"], "name": f["name"], "createdTime": f["createdTime"]})
-        page_token = response.get("nextPageToken")
-        if not page_token:
-            break
-    return results
-
-
-def download_file(service, file_id):
-    """Descarga el contenido de un archivo y lo devuelve como bytes."""
-    request = service.files().get_media(fileId=file_id)
-    buffer = io.BytesIO()
-    downloader = MediaIoBaseDownload(buffer, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    buffer.seek(0)
-    return buffer.read()
-
-
-def upload_file(service, folder_id, filename, content_bytes, mime_type="image/jpeg"):
-    """Sube bytes como un archivo nuevo dentro de folder_id. Devuelve el id del archivo creado."""
-    file_metadata = {"name": filename, "parents": [folder_id]}
-    media = MediaIoBaseUpload(io.BytesIO(content_bytes), mimetype=mime_type, resumable=False)
-    created = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-    return created["id"]
-
-
-def move_file(service, file_id, new_folder_id):
-    """Mueve un archivo existente a otra carpeta (quita el parent viejo, agrega el nuevo)."""
-    file = service.files().get(fileId=file_id, fields="parents").execute()
-    previous_parents = ",".join(file.get("parents", []))
-    service.files().update(
-        fileId=file_id,
-        addParents=new_folder_id,
-        removeParents=previous_parents,
-        fields="id, parents",
-    ).execute()
-
-
-def file_exists_by_name(service, folder_id, filename):
-    """Chequea si ya existe un archivo con ese nombre en la carpeta dada."""
-    safe_name = filename.replace("'", "\\'")
-    query = f"'{folder_id}' in parents and trashed = false and name = '{safe_name}'"
-    response = service.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
-    return len(response.get("files", [])) > 0
+      - name: Ejecutar bot
+        env:
+          POST_SLOT: ${{ env.POST_SLOT }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GDRIVE_FOLDER_ORIGINALES: ${{ secrets.GDRIVE_FOLDER_ORIGINALES }}
+          GDRIVE_FOLDER_EDITADAS: ${{ secrets.GDRIVE_FOLDER_EDITADAS }}
+          GDRIVE_FOLDER_APROBADAS: ${{ secrets.GDRIVE_FOLDER_APROBADAS }}
+          GDRIVE_FOLDER_PUBLICADAS: ${{ secrets.GDRIVE_FOLDER_PUBLICADAS }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python main.py
