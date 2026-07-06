@@ -1,0 +1,4 @@
+temp_hosting/
+*.pyc
+__pycache__/
+.env
