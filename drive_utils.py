@@ -1,5 +1,4 @@
-
-python"""
+"""
 Funciones para listar, descargar, subir y mover archivos en Google Drive
 usando OAuth como el usuario real (no cuenta de servicio).
 
