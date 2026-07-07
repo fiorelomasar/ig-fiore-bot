@@ -126,25 +126,56 @@ def _slot_style(slot):
 # Si no se reconoce ninguno, se generan las 4. Se puede pisar desde config.py
 # definiendo PRODUCT_SLOTS con el mismo formato.
 
+_DULCE = ["desayuno", "merienda"]
+_SALADO = ["almuerzo", "cena"]
+
 _DEFAULT_PRODUCT_SLOTS = {
-    "factur":   ["desayuno", "merienda"],   # facturas
-    "medialun": ["desayuno", "merienda"],   # medialunas
-    "budin":    ["desayuno", "merienda"],   # budines
-    "torta":    ["merienda"],               # tortas
-    "masas":    ["merienda"],               # masas finas
-    "masitas":  ["merienda"],
-    "empanad":  ["almuerzo", "cena"],       # empanadas
-    "sandwich": ["almuerzo", "cena"],       # sandwiches
-    "sanguch":  ["almuerzo", "cena"],       # sanguches :)
-    "tarta":    ["almuerzo", "cena"],       # tartas
+    # dulces / panificados -> desayuno y merienda
+    "dulce":     _DULCE,      # dulces, membrillo dulce
+    "alfajor":   _DULCE,
+    "torta":     _DULCE,
+    "medialun":  _DULCE,      # medialunas (las saladas se detectan aparte)
+    "factur":    _DULCE,
+    "chipa":     _DULCE,
+    "arrollad":  _DULCE,      # arrollado (el salado se detecta aparte)
+    "bombon":    _DULCE,
+    "masas":     _DULCE,      # masas, masas secas, masas finas
+    "masitas":   _DULCE,
+    "budin":     _DULCE,
+    "galletita": _DULCE,
+    "membrillo": _DULCE,
+    "pastelito": _DULCE,
+    "palito":    _DULCE,      # palito salado
+    # salados -> almuerzo y cena
+    "sandwich":  _SALADO,
+    "sanwich":   _SALADO,     # variante sin la primera d
+    "sanguch":   _SALADO,
+    "empanad":   _SALADO,
+    "tarta":     _SALADO,     # tarta salada
+    "pizzeta":   _SALADO,
+    "pizza":     _SALADO,
+    "calzon":    _SALADO,     # calzon, calzones, calzone
+    "katering":  _SALADO,
+    "catering":  _SALADO,
+    "fosforito": _SALADO,
 }
+
+# Combinaciones específicas: si TODAS las partes aparecen en el nombre, mandan
+# sobre la palabra genérica (ej: 'medialunas saladas' le gana a 'medialunas').
+_SPECIFIC_PRODUCTS = [
+    (("medialun", "salad"), _SALADO),   # medialunas saladas
+    (("arrollad", "salad"), _SALADO),   # arrollado salado
+]
 
 
 def _normalize(text):
-    """minúsculas y sin tildes, para comparar nombres de archivo."""
+    """minúsculas, sin tildes y con separadores como espacios."""
     import unicodedata
     text = unicodedata.normalize("NFKD", text.lower())
-    return "".join(c for c in text if not unicodedata.combining(c))
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    for sep in "_-.":
+        text = text.replace(sep, " ")
+    return text
 
 
 def slots_for_filename(filename):
@@ -155,10 +186,21 @@ def slots_for_filename(filename):
     """
     mapping = getattr(config, "PRODUCT_SLOTS", _DEFAULT_PRODUCT_SLOTS)
     name = _normalize(filename)
+
     matched = set()
-    for keyword, slots in mapping.items():
-        if _normalize(keyword) in name:
+    suppressed = set()
+    for parts, slots in _SPECIFIC_PRODUCTS:
+        if all(part in name for part in parts):
             matched.update(slots)
+            suppressed.add(parts[0])  # no evaluar la palabra genérica
+
+    for keyword, slots in mapping.items():
+        kw = _normalize(keyword)
+        if kw in suppressed:
+            continue
+        if kw in name:
+            matched.update(slots)
+
     if not matched:
         return list(SLOTS)
     return [s for s in SLOTS if s in matched]
