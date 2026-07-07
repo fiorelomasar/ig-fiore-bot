@@ -131,6 +131,8 @@ _DEFAULT_PRODUCT_SLOTS = {
     "medialun": ["desayuno", "merienda"],   # medialunas
     "budin":    ["desayuno", "merienda"],   # budines
     "torta":    ["merienda"],               # tortas
+    "masas":    ["merienda"],               # masas finas
+    "masitas":  ["merienda"],
     "empanad":  ["almuerzo", "cena"],       # empanadas
     "sandwich": ["almuerzo", "cena"],       # sandwiches
     "sanguch":  ["almuerzo", "cena"],       # sanguches :)
@@ -184,6 +186,13 @@ def extract_slot_from_filename(filename):
 # Piezas del diseño
 # ------------------------------------------------------------------
 
+def _ref(base):
+    """Dimensión de referencia para escalar el diseño: evita textos gigantes
+    en fotos apaisadas (usa la menor entre el ancho y el 80%% del alto)."""
+    W, H = base.size
+    return min(W, int(H * 0.8))
+
+
 def _rounded_shadow_card(size, radius, blur, alpha=90):
     """Sombra suave para tarjetas/píldoras."""
     pad = blur * 3
@@ -196,8 +205,9 @@ def _rounded_shadow_card(size, radius, blur, alpha=90):
 def _paste_logo_card(base):
     """Logo en tarjeta blanca redondeada, arriba a la izquierda."""
     W, H = base.size
-    margin = int(W * 0.045)
-    card_w = int(W * getattr(config, "FLYER_LOGO_WIDTH_RATIO", 0.24))
+    ref = _ref(base)
+    margin = int(ref * 0.045)
+    card_w = int(ref * getattr(config, "FLYER_LOGO_WIDTH_RATIO", 0.24))
 
     logo = Image.open(config.LOGO_PATH).convert("RGBA")
     inner_w = int(card_w * 0.86)
@@ -208,8 +218,8 @@ def _paste_logo_card(base):
     card_h = logo.height + pad * 2
     radius = int(card_w * 0.16)
 
-    shadow, spad = _rounded_shadow_card((card_w, card_h), radius, blur=int(W * 0.008))
-    base.alpha_composite(shadow, (margin - spad + int(W * 0.004), margin - spad + int(W * 0.006)))
+    shadow, spad = _rounded_shadow_card((card_w, card_h), radius, blur=max(2, int(ref * 0.008)))
+    base.alpha_composite(shadow, (margin - spad + int(ref * 0.004), margin - spad + int(ref * 0.006)))
 
     card = Image.new("RGBA", (card_w, card_h), (0, 0, 0, 0))
     d = ImageDraw.Draw(card)
@@ -219,10 +229,12 @@ def _paste_logo_card(base):
     return margin + card_h  # borde inferior del logo, por si hace falta
 
 
-def _draw_headline(base, text, y_center, angle_deg=-3):
-    """Titular manuscrito blanco con sombra difusa, levemente inclinado."""
+def _draw_headline(base, text, y_center, min_top=0, angle_deg=-3):
+    """Titular manuscrito blanco con sombra difusa, levemente inclinado.
+    min_top: borde superior mínimo (para no pisar el logo en fotos apaisadas)."""
     W, _ = base.size
-    font = _fit_font(_SCRIPT_FONT_PATH, text, W * 0.88, int(W * 0.125))
+    ref = _ref(base)
+    font = _fit_font(_SCRIPT_FONT_PATH, text, W * 0.88, int(ref * 0.125))
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
@@ -232,9 +244,9 @@ def _draw_headline(base, text, y_center, angle_deg=-3):
     origin = (pad - bbox[0], pad - bbox[1])
 
     # sombra difusa
-    off = max(2, int(W * 0.004))
+    off = max(2, int(ref * 0.004))
     d.text((origin[0] + off, origin[1] + off), text, font=font, fill=(0, 0, 0, 190))
-    layer = layer.filter(ImageFilter.GaussianBlur(max(2, int(W * 0.006))))
+    layer = layer.filter(ImageFilter.GaussianBlur(max(2, int(ref * 0.006))))
 
     # texto principal
     d = ImageDraw.Draw(layer)
@@ -243,14 +255,16 @@ def _draw_headline(base, text, y_center, angle_deg=-3):
     if angle_deg:
         layer = layer.rotate(angle_deg, expand=True, resample=Image.BICUBIC)
 
-    base.alpha_composite(layer, ((W - layer.width) // 2, int(y_center - layer.height / 2)))
-    return int(y_center + layer.height / 2)
+    y = max(int(y_center - layer.height / 2), min_top)
+    base.alpha_composite(layer, ((W - layer.width) // 2, y))
+    return y + layer.height
 
 
 def _draw_pill(base, text, y_top, bg_color, text_color, font_ratio=0.042):
     """Píldora redondeada centrada con texto."""
     W, _ = base.size
-    font = _fit_font(_SANS_FONT_PATH, text, W * 0.82, int(W * font_ratio))
+    ref = _ref(base)
+    font = _fit_font(_SANS_FONT_PATH, text, W * 0.82, int(ref * font_ratio))
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
@@ -258,9 +272,9 @@ def _draw_pill(base, text, y_top, bg_color, text_color, font_ratio=0.042):
     pill_w, pill_h = tw + pad_x * 2, th + pad_y * 2
     radius = pill_h // 2
 
-    shadow, spad = _rounded_shadow_card((pill_w, pill_h), radius, blur=max(2, int(W * 0.006)), alpha=70)
+    shadow, spad = _rounded_shadow_card((pill_w, pill_h), radius, blur=max(2, int(ref * 0.006)), alpha=70)
     x = (W - pill_w) // 2
-    base.alpha_composite(shadow, (x - spad, y_top - spad + int(W * 0.004)))
+    base.alpha_composite(shadow, (x - spad, y_top - spad + int(ref * 0.004)))
 
     pill = Image.new("RGBA", (pill_w, pill_h), (0, 0, 0, 0))
     d = ImageDraw.Draw(pill)
@@ -273,7 +287,8 @@ def _draw_pill(base, text, y_top, bg_color, text_color, font_ratio=0.042):
 def _draw_tagline(base, text, y_top):
     """Línea chica blanca con sombra, ej: '—  Te esperamos en Fiore  —'."""
     W, _ = base.size
-    font = _fit_font(_SANS_FONT_PATH, text, W * 0.8, int(W * 0.028))
+    ref = _ref(base)
+    font = _fit_font(_SANS_FONT_PATH, text, W * 0.8, int(ref * 0.028))
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     layer = Image.new("RGBA", (tw + 20, th + 20), (0, 0, 0, 0))
@@ -300,7 +315,8 @@ def _draw_heart(draw, cx, cy, size, color):
 def _draw_footer_pill(base, text):
     """Píldora blanca semitransparente abajo, con corazón rojo + texto."""
     W, H = base.size
-    font = _fit_font(_SANS_FONT_PATH, text, W * 0.72, int(W * 0.033))
+    ref = _ref(base)
+    font = _fit_font(_SANS_FONT_PATH, text, W * 0.72, int(ref * 0.033))
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
@@ -319,7 +335,7 @@ def _draw_footer_pill(base, text):
 
     x = (W - pill_w) // 2
     y = int(H - pill_h - H * 0.035)
-    shadow, spad = _rounded_shadow_card((pill_w, pill_h), radius, blur=max(2, int(W * 0.005)), alpha=60)
+    shadow, spad = _rounded_shadow_card((pill_w, pill_h), radius, blur=max(2, int(ref * 0.005)), alpha=60)
     base.alpha_composite(shadow, (x - spad, y - spad + 2))
     base.alpha_composite(pill, (x, y))
 
@@ -338,9 +354,13 @@ def apply_full_design(image_bytes, slot):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     W, H = img.size
 
-    _paste_logo_card(img)
+    logo_bottom = _paste_logo_card(img)
 
-    y = _draw_headline(img, style["headline"], y_center=int(H * 0.27))
+    y = _draw_headline(
+        img, style["headline"],
+        y_center=int(H * 0.27),
+        min_top=logo_bottom + int(_ref(img) * 0.015),
+    )
     y = _draw_pill(
         img, style["subtitle"],
         y_top=y + int(H * 0.012),
