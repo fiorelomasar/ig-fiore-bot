@@ -112,6 +112,30 @@ def apply_watermark(image_bytes, output_format="JPEG"):
     return out_buffer.getvalue()
 
 
+def apply_full_design(image_bytes, slot, output_format="JPEG"):
+    """
+    Genera la versión FINAL de una foto para una franja horaria específica:
+    logo + banner, todo en un solo paso. Esto es lo que se sube a 'editadas'
+    para que puedas revisar el resultado final antes de aprobar.
+    """
+    watermarked = apply_watermark(image_bytes, output_format="PNG")
+    return apply_flyer_banner(watermarked, slot, output_format=output_format)
+
+
+def slot_suffix(base_name, ext, slot):
+    """Genera el nombre de archivo derivado para una franja: 'foto.jpg' -> 'foto_desayuno.jpg'."""
+    return f"{base_name}_{slot}{ext}"
+
+
+def extract_slot_from_filename(filename):
+    """Detecta la franja horaria a partir del nombre de archivo (sufijo _desayuno, _almuerzo, etc.)."""
+    name_lower = filename.lower()
+    for slot in config.SLOT_STYLES:
+        if f"_{slot}" in name_lower:
+            return slot
+    return None
+
+
 def apply_flyer_banner(image_bytes, slot, output_format="JPEG"):
     """
     Agrega un banner inferior tipo flyer con el estilo y texto de la franja
