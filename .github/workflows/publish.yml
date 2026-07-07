@@ -46,6 +46,18 @@ jobs:
             esac
           fi
 
+      - name: DIAGNOSTICO - probar refresh token con curl
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+        run: |
+          curl -s -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$GOOGLE_OAUTH_CLIENT_ID" \
+            -d client_secret="$GOOGLE_OAUTH_CLIENT_SECRET" \
+            -d refresh_token="$GOOGLE_OAUTH_REFRESH_TOKEN" \
+            -d grant_type=refresh_token
+
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
