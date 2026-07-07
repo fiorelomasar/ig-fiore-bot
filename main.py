@@ -34,8 +34,9 @@ def editar_imagenes_nuevas(service):
     nuevas = 0
     for f in originales:
         base_name, ext = _os.path.splitext(f["name"])
+        slots_producto = watermark.slots_for_filename(f["name"])
         slots_faltantes = [
-            slot for slot in config.SLOT_STYLES
+            slot for slot in slots_producto
             if not drive_utils.file_exists_by_name(
                 service, config.GDRIVE_FOLDER_EDITADAS, watermark.slot_suffix(base_name, ext, slot)
             )
@@ -52,7 +53,7 @@ def editar_imagenes_nuevas(service):
             drive_utils.upload_file(service, config.GDRIVE_FOLDER_EDITADAS, nombre_final, final_bytes)
             nuevas += 1
 
-    print(f"[editar] {nuevas} imagen(es) nueva(s) generada(s) (4 por foto: desayuno/almuerzo/merienda/cena).")
+    print(f"[editar] {nuevas} imagen(es) nueva(s) generada(s) (solo franjas acordes al producto).")
 
 
 def publicar_siguiente(service):
