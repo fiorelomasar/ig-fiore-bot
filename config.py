@@ -114,3 +114,43 @@ def get_caption(slot=None):
     if slot and slot in CAPTIONS:
         return random.choice(CAPTIONS[slot])
     return DEFAULT_CAPTION
+
+
+# ------------------------------------------------------------------
+# BANNER DE FLYER POR FRANJA HORARIA (se aplica recién al publicar)
+# ------------------------------------------------------------------
+
+# Activar/desactivar el banner inferior tipo flyer (además del logo de editadas)
+FLYER_BANNER_ENABLED = True
+
+# Altura del banner como proporción de la altura de la imagen
+FLYER_BANNER_HEIGHT_RATIO = 0.22
+
+# Fuentes para el banner (dejar como están si no subiste otras a assets/)
+FLYER_HEADLINE_FONT_PATH = "assets/fonts/Poppins-Bold.ttf"
+FLYER_SUBTITLE_FONT_PATH = "assets/fonts/Poppins-Bold.ttf"
+
+SLOT_STYLES = {
+    "desayuno": {
+        "bg_color": (212, 160, 23, 235),      # dorado, como los "30% OFF" de tus flyers
+        "text_color": (40, 25, 5, 255),
+        "headline": "¡A DESAYUNAR!",
+    },
+    "almuerzo": {
+        "bg_color": (166, 25, 46, 235),        # rojo del logo
+        "text_color": (255, 255, 255, 255),
+        "headline": "HORA DEL ALMUERZO",
+    },
+    "merienda": {
+        "bg_color": (30, 113, 69, 235),        # verde del logo
+        "text_color": (255, 255, 255, 255),
+        "headline": "MOMENTO MERIENDA",
+    },
+    "cena": {
+        "bg_color": (20, 20, 22, 235),         # oscuro, clima nocturno
+        "text_color": (212, 160, 23, 255),     # texto dorado sobre fondo oscuro
+        "headline": "PARA LA CENA",
+    },
+}
+
+FLYER_SUBTITLE_TEXT = f"{BUSINESS_NAME} · Lomas de Zamora"
