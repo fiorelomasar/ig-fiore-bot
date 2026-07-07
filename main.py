@@ -6,7 +6,8 @@ En cada corrida:
   1) Busca imágenes nuevas en 'originales' que todavía no estén en 'editadas',
      les aplica la marca de agua y las sube a 'editadas' (para que las revises).
   2) Toma la imagen MÁS RECIENTE de 'aprobadas' (la carpeta donde vos movés a mano
-     las que diste el OK), la publica en Instagram, y la mueve a 'publicadas'.
+     las que diste el OK), le agrega el banner de la franja horaria actual,
+     la publica en Instagram, y la mueve a 'publicadas'.
 
 El bot nunca publica nada de 'editadas' directamente: solo publica lo que vos
 movés manualmente a 'aprobadas' en Google Drive. Ese movimiento ES el paso de
@@ -54,11 +55,13 @@ def publicar_siguiente(service):
 
     content_bytes = drive_utils.download_file(service, siguiente["id"])
 
+    slot = os.environ.get("POST_SLOT")  # "desayuno" | "almuerzo" | "merienda" | "cena"
+    content_bytes = watermark.apply_flyer_banner(content_bytes, slot)
+
     public_url = temp_hosting.publish_to_temp_hosting(siguiente["name"], content_bytes)
     print(f"[publicar] Imagen disponible temporalmente en: {public_url}")
 
     try:
-        slot = os.environ.get("POST_SLOT")  # "desayuno" | "almuerzo" | "merienda" | "cena"
         caption = config.get_caption(slot)
         media_id = instagram_api.publish_image(public_url, caption=caption)
         print(f"[publicar] ¡Publicado en Instagram! (franja: {slot}) media_id={media_id}")
