@@ -62,10 +62,24 @@ def publicar_siguiente(service):
         print("[publicar] No hay imágenes pendientes en 'aprobadas'.")
         return
 
+    # Solo se publican fotos de la franja de esta corrida (detectada por el
+    # nombre, ej. 'empanadas_cena.jpg'). Si no hay ninguna, no se publica nada.
+    slot_actual = os.environ.get("POST_SLOT")
+    if slot_actual:
+        candidatas = [
+            f for f in aprobadas
+            if watermark.extract_slot_from_filename(f["name"]) == slot_actual
+        ]
+        if not candidatas:
+            print(f"[publicar] No hay imágenes de '{slot_actual}' en 'aprobadas'; no se publica nada en esta corrida.")
+            return
+    else:
+        candidatas = aprobadas
+
     # Más reciente primero: la última que aprobaste es la próxima en publicarse.
-    aprobadas.sort(key=lambda f: f["createdTime"], reverse=True)
-    siguiente = aprobadas[0]
-    print(f"[publicar] Publicando '{siguiente['name']}' (la más reciente de 'aprobadas')...")
+    candidatas.sort(key=lambda f: f["createdTime"], reverse=True)
+    siguiente = candidatas[0]
+    print(f"[publicar] Publicando '{siguiente['name']}' (franja: {slot_actual or 'sin especificar'})...")
 
     content_bytes = drive_utils.download_file(service, siguiente["id"])
 
