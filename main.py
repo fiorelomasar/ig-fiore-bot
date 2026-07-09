@@ -48,7 +48,7 @@ def editar_imagenes_nuevas(service):
         original_bytes = drive_utils.download_file(service, f["id"])
 
         for slot in slots_faltantes:
-            final_bytes = watermark.apply_full_design(original_bytes, slot)
+            final_bytes = watermark.apply_full_design(original_bytes, slot, f["name"])
             nombre_final = watermark.slot_suffix(base_name, ext, slot)
             drive_utils.upload_file(service, config.GDRIVE_FOLDER_EDITADAS, nombre_final, final_bytes)
             nuevas += 1
