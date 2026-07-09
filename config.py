@@ -10,7 +10,7 @@ import os
 # ------------------------------------------------------------------
 
 # Nombre que se va a mostrar en la marca de agua (si usás modo "text")
-BUSINESS_NAME = "Sandwichería FIORE Confitería"
+BUSINESS_NAME = "Sandwichería y Confitería FIORE"
 
 # Modo de marca de agua: "text" (escribe el nombre) o "logo" (superpone un PNG)
 WATERMARK_MODE = "logo"  # "text" | "logo"
