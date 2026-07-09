@@ -8,6 +8,7 @@ pueda descargar la imagen sin autenticación.
 
 import os
 import subprocess
+import urllib.parse
 
 import config
 
@@ -25,13 +26,17 @@ def publish_to_temp_hosting(filename, content_bytes):
 
     _run(["git", "config", "user.name", "ig-confiteria-bot"])
     _run(["git", "config", "user.email", "bot@users.noreply.github.com"])
-    _run(["git", "add", local_path])
+    # -f: la carpeta temp_hosting/ está en .gitignore; hay que forzar el add.
+    _run(["git", "add", "-f", local_path])
     _run(["git", "commit", "-m", f"temp hosting: {filename}"])
+    _run(["git", "pull", "--rebase"])  # por si el repo se movió durante la corrida
     _run(["git", "push"])
 
     repo = config.GITHUB_REPO
     branch = config.GITHUB_BRANCH
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{config.TEMP_HOSTING_DIR}/{filename}"
+    # Codificar el nombre por si tiene espacios o tildes (si no, Instagram no puede bajarla)
+    safe_name = urllib.parse.quote(filename)
+    raw_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{config.TEMP_HOSTING_DIR}/{safe_name}"
     return raw_url
 
 
@@ -40,6 +45,7 @@ def remove_from_temp_hosting(filename):
     local_path = os.path.join(config.TEMP_HOSTING_DIR, filename)
     if os.path.exists(local_path):
         os.remove(local_path)
-        _run(["git", "add", local_path])
+        _run(["git", "add", "-f", local_path])
         _run(["git", "commit", "-m", f"cleanup temp hosting: {filename}"])
+        _run(["git", "pull", "--rebase"])
         _run(["git", "push"])

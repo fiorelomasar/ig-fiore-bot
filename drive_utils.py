@@ -34,19 +34,6 @@ def _load_credentials():
             "GOOGLE_OAUTH_CLIENT_SECRET y/o GOOGLE_OAUTH_REFRESH_TOKEN."
         )
 
-    # --- DIAGNÓSTICO TEMPORAL: no expone los valores completos, solo su forma ---
-    for nombre, valor in [
-        ("GOOGLE_OAUTH_CLIENT_ID", client_id),
-        ("GOOGLE_OAUTH_CLIENT_SECRET", client_secret),
-        ("GOOGLE_OAUTH_REFRESH_TOKEN", refresh_token),
-    ]:
-        print(
-            f"[diagnostico] {nombre}: longitud={len(valor)} "
-            f"repr_inicio={repr(valor[:6])} repr_fin={repr(valor[-6:])} "
-            f"tiene_espacios={' ' in valor} tiene_saltos_linea={chr(10) in valor or chr(13) in valor}"
-        )
-    # --- FIN DIAGNÓSTICO ---
-
     return Credentials(
         token=None,
         refresh_token=refresh_token,
