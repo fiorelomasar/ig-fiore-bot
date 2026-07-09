@@ -10,7 +10,7 @@ import os
 # ------------------------------------------------------------------
 
 # Nombre que se va a mostrar en la marca de agua (si usás modo "text")
-BUSINESS_NAME = "Sandwichería y Confitería FIORE"
+BUSINESS_NAME = "Sandwichería FIORE Confitería"
 
 # Modo de marca de agua: "text" (escribe el nombre) o "logo" (superpone un PNG)
 WATERMARK_MODE = "logo"  # "text" | "logo"
@@ -154,3 +154,13 @@ SLOT_STYLES = {
 }
 
 FLYER_SUBTITLE_TEXT = f"{BUSINESS_NAME} · Lomas de Zamora"
+
+# ------------------------------------------------------------------
+# TEXTOS DEL DISEÑO v3 (píldora inferior y acento manuscrito)
+# ------------------------------------------------------------------
+
+# Texto de la píldora blanca de abajo (con el corazón). "" para sacarla.
+FLYER_FOOTER_TEXT = "Como en casa, todos los días"
+
+# Texto manuscrito debajo del bloque de cintas. "" para sacarlo.
+FLYER_ACCENT_TEXT = "Lomas de Zamora"
