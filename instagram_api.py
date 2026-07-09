@@ -11,6 +11,20 @@ import config
 GRAPH_BASE = f"https://graph.facebook.com/{config.GRAPH_API_VERSION}"
 
 
+def _check(resp):
+    """raise_for_status pero mostrando el mensaje de error real de Meta,
+    que explica el motivo (proporción inválida, token vencido, etc.)."""
+    if resp.status_code >= 400:
+        try:
+            detalle = resp.json().get("error", {})
+            msg = detalle.get("message", resp.text)
+            sub = detalle.get("error_user_msg") or detalle.get("error_user_title") or ""
+            print(f"[instagram] Error de la API de Meta: {msg} {('| ' + sub) if sub else ''}")
+        except Exception:
+            print(f"[instagram] Error de la API de Meta (sin detalle JSON): {resp.text[:500]}")
+    resp.raise_for_status()
+
+
 def create_media_container(image_url, caption=None):
     url = f"{GRAPH_BASE}/{config.IG_USER_ID}/media"
     payload = {
@@ -19,7 +33,7 @@ def create_media_container(image_url, caption=None):
         "access_token": config.IG_ACCESS_TOKEN,
     }
     resp = requests.post(url, data=payload, timeout=60)
-    resp.raise_for_status()
+    _check(resp)
     return resp.json()["id"]
 
 
@@ -32,7 +46,7 @@ def wait_until_container_ready(container_id, max_wait_seconds=120, poll_interval
             "fields": "status_code",
             "access_token": config.IG_ACCESS_TOKEN,
         }, timeout=30)
-        resp.raise_for_status()
+        _check(resp)
         status = resp.json().get("status_code")
         if status == "FINISHED":
             return True
@@ -50,7 +64,7 @@ def publish_container(container_id):
         "access_token": config.IG_ACCESS_TOKEN,
     }
     resp = requests.post(url, data=payload, timeout=60)
-    resp.raise_for_status()
+    _check(resp)
     return resp.json()["id"]
 
 
