@@ -246,11 +246,34 @@ def extract_slot_from_filename(filename):
 # ------------------------------------------------------------------
 
 def _detail_map(img):
-    """Mapa chico (ancho 200) de 'detalle visual': bordes difuminados.
-    Zonas claras = producto/detalle; zonas oscuras = fondo liso o desenfocado."""
-    small = img.convert("L").resize((200, max(1, int(img.height * 200 / img.width))), Image.BILINEAR)
-    edges = small.filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(4))
-    return edges
+    """Mapa chico (ancho 200) de dónde está el producto. Combina tres señales:
+    - qué tan distinto es cada pixel del color del fondo (estimado en los bordes
+      de la foto): el producto suele despegarse del fondo aunque sea liso;
+    - bordes/textura (detalle en foco);
+    - cercanía al centro (el producto suele estar centrado).
+    Zonas claras = producto; zonas oscuras = lugar seguro para el texto."""
+    from PIL import ImageChops, ImageOps
+
+    w = 200
+    h = max(1, int(img.height * w / img.width))
+    small = img.convert("RGB").resize((w, h), Image.BILINEAR)
+
+    # color de fondo: mediana de los marcos superior e inferior de la foto
+    edge_px = max(2, h // 10)
+    top = ImageStat.Stat(small.crop((0, 0, w, edge_px))).median
+    bottom = ImageStat.Stat(small.crop((0, h - edge_px, w, h))).median
+    bg = tuple((a + b) // 2 for a, b in zip(top, bottom))
+    distinct = ImageChops.difference(small, Image.new("RGB", small.size, bg)).convert("L")
+    distinct = ImageOps.autocontrast(distinct, cutoff=2)
+
+    edges = small.convert("L").filter(ImageFilter.FIND_EDGES)
+    edges = ImageOps.autocontrast(edges, cutoff=2)
+
+    center = ImageOps.invert(Image.radial_gradient("L")).resize(small.size, Image.BILINEAR)
+
+    sal = Image.blend(distinct, edges, 0.35)     # 65% color distinto, 35% bordes
+    sal = Image.blend(sal, center, 0.18)         # + un poco de prior central
+    return sal.filter(ImageFilter.GaussianBlur(4))
 
 
 def _region_detail(dmap, base_size, box):
@@ -357,14 +380,15 @@ def _split_headline(text, font_path, max_width, size):
     return [" ".join(words[:best]), " ".join(words[best:])]
 
 
-def _build_text_block(base, theme, headline, subtitle, accent):
+def _build_text_block(base, theme, headline, subtitle, accent, scale=1.0):
     """Arma el bloque completo (cintas + acento manuscrito) sobre un lienzo
-    transparente, para poder medirlo y ubicarlo donde menos tape."""
+    transparente, para poder medirlo y ubicarlo donde menos tape.
+    scale < 1 genera un bloque más compacto (para fotos llenas de producto)."""
     W, H = base.size
-    ref = _ref(base)
-    max_w = int(W * 0.80)
+    ref = int(_ref(base) * scale)
+    max_w = int(W * 0.80 * max(scale, 0.85))
 
-    head_size = int(ref * 0.100)
+    head_size = int(ref * 0.095)
     lines = _split_headline(headline.upper(), _HEADLINE_FONT_PATH, max_w - int(head_size * 1.1), head_size)
 
     layers, y, x_off = [], 0, 0
@@ -376,7 +400,7 @@ def _build_text_block(base, theme, headline, subtitle, accent):
         y += int(lay.height * 0.82)
         x_off += int(ref * 0.030)
 
-    sub_font = _fit_font(_SANS_FONT_PATH, subtitle.upper(), int(max_w * 0.9), int(ref * 0.036))
+    sub_font = _fit_font(_SANS_FONT_PATH, subtitle.upper(), int(max_w * 0.9), int(ref * 0.035))
     lay = _ribbon_layer(subtitle.upper(), sub_font, ref, theme["c3"], theme["t3"],
                         pad_x_ratio=0.75, pad_y_ratio=0.45)
     layers.append((lay, int(ref * 0.015), y + int(ref * 0.006)))
@@ -458,28 +482,41 @@ def apply_full_design(image_bytes, slot, seed_name=""):
     img.alpha_composite(logo, (lx, ly))
     logo_bottom = ly + logo.height - int(ref * 0.03)
 
-    # --- bloque de texto: la combinación (altura x lado) que menos tape ---
-    block = _build_text_block(img, theme, headline, subtitle,
-                              getattr(config, "FLYER_ACCENT_TEXT", "Lomas de Zamora"))
-    x_left = int(W * 0.055)
-    x_right = max(x_left, W - block.width - int(W * 0.055))
+    # --- bloque de texto: la combinación (altura x lado) que menos tape.
+    # Si toda la foto está ocupada por producto, se prueba con un bloque más
+    # chico (85% y 72%) hasta que lo tapado sea aceptable. ---
+    accent = getattr(config, "FLYER_ACCENT_TEXT", "Lomas de Zamora")
     footer_space = int(H * 0.115)
+    best_overall = None
 
-    ys = [logo_bottom + int(ref * 0.030)]                       # bajo el logo (clásico)
-    y_mid = int(H * 0.42)
-    y_low = H - footer_space - block.height
-    if y_mid > ys[0] + int(ref * 0.05) and y_mid + block.height < y_low:
-        ys.append(y_mid)
-    if y_low > ys[0] + int(ref * 0.05):
-        ys.append(y_low)
+    for scale in (1.0, 0.85, 0.72):
+        block = _build_text_block(img, theme, headline, subtitle, accent, scale=scale)
+        x_left = int(W * 0.055)
+        x_right = max(x_left, W - block.width - int(W * 0.055))
 
-    candidates, bias = [], {}
-    for i, y in enumerate(ys):
-        for x in (x_left, x_right):
-            if i == 0 and x == x_left:
-                bias[len(candidates)] = 6  # leve preferencia por el layout clásico
-            candidates.append((x, y))
-    bx, by = _best_position(dmap, (W, H), block.size, candidates, bias=bias)
+        ys = [logo_bottom + int(ref * 0.030)]                   # bajo el logo (clásico)
+        y_mid = int(H * 0.42)
+        y_low = H - footer_space - block.height
+        if y_mid > ys[0] + int(ref * 0.05) and y_mid + block.height < y_low:
+            ys.append(y_mid)
+        if y_low > ys[0] + int(ref * 0.05):
+            ys.append(y_low)
+
+        for i, y in enumerate(ys):
+            for x in {x_left, x_right}:
+                box = (x, y, x + block.width, y + block.height)
+                score = _region_detail(dmap, (W, H), box)
+                if i == 0 and x == x_left:
+                    score -= 6      # leve preferencia por el layout clásico
+                score += (1.0 - scale) * 20  # preferir el tamaño grande si empatan
+                if best_overall is None or score < best_overall[0]:
+                    best_overall = (score, block, x, y)
+
+        # si ya hay una posición que casi no tapa producto, no achicar más
+        if best_overall and best_overall[0] <= 95:
+            break
+
+    _, block, bx, by = best_overall
     img.alpha_composite(block, (bx, by))
 
     footer = getattr(config, "FLYER_FOOTER_TEXT", "Hecho en casa, todos los días")
