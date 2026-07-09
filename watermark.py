@@ -1,16 +1,11 @@
 """
-Diseño de flyer estilo "póster" para Sandwichería FIORE Confitería (v2).
+Diseño de flyer estilo "póster" para Sandwichería FIORE Confitería (v3).
 
-Inspirado en las piezas promocionales de la marca:
-  - Logo grande centrado arriba, con sombra.
-  - Titular en tipografía condensada pesada (Anton), en MAYÚSCULAS, sobre
-    cintas de color inclinadas y superpuestas (con sombra dura, estilo póster).
-  - Subtítulo en una cinta oscura más chica.
-  - Acento manuscrito (Pacifico) con la localidad.
-  - Píldora blanca abajo con corazón + "Hecho en casa, todos los días".
-
-Las frases rotan: cada foto elige (de forma determinística según su nombre)
-una frase distinta de la lista de su franja, así los posts no se repiten.
+Igual que la v2 (logo grande, titular Anton sobre cintas inclinadas, acento
+manuscrito, píldora "Hecho en casa") pero con COLOCACIÓN INTELIGENTE:
+antes de ubicar el texto y el logo, se calcula un mapa de detalle visual de
+la foto (bordes + contraste = producto) y cada elemento se coloca en la zona
+candidata con MENOS producto debajo, para no taparlo.
 
 Funciones usadas por main.py: apply_full_design(), slot_suffix(),
 extract_slot_from_filename(), slots_for_filename().
@@ -19,7 +14,7 @@ extract_slot_from_filename(), slots_for_filename().
 import io
 import zlib
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 import config
 
@@ -78,18 +73,11 @@ BLANCO = (255, 255, 255, 255)
 CREMA = (250, 246, 238, 255)
 
 _SLOT_THEME = {
-    #             cinta 1              cinta 2 (invertida)    cinta subtítulo
     "desayuno": {"c1": DORADO, "t1": OSCURO, "c2": CREMA, "t2": ROJO,   "c3": VERDE,  "t3": BLANCO},
     "almuerzo": {"c1": ROJO,   "t1": BLANCO, "c2": CREMA, "t2": ROJO,   "c3": OSCURO, "t3": DORADO},
     "merienda": {"c1": VERDE,  "t1": BLANCO, "c2": CREMA, "t2": VERDE,  "c3": ROJO,   "t3": BLANCO},
     "cena":     {"c1": OSCURO, "t1": DORADO, "c2": CREMA, "t2": OSCURO, "c3": ROJO,   "t3": BLANCO},
 }
-
-# ------------------------------------------------------------------
-# Frases por franja: (titular, subtítulo). El titular va en MAYÚSCULAS
-# en la cinta grande; el subtítulo en la cinta chica. Se pueden pisar
-# desde config.py con FLYER_PHRASES = {"desayuno": [("...", "..."), ...], ...}
-# ------------------------------------------------------------------
 
 _DEFAULT_PHRASES = {
     "desayuno": [
@@ -133,6 +121,16 @@ _DEFAULT_PHRASES = {
         ("¡A cenar se ha dicho!", "te esperamos"),
     ],
 }
+
+
+def _pick_phrase(slot, seed_name=""):
+    """Elige una frase de la franja. Con seed_name (nombre del archivo) la
+    elección es determinística: la misma foto siempre lleva la misma frase,
+    pero fotos distintas llevan frases distintas."""
+    phrases = getattr(config, "FLYER_PHRASES", _DEFAULT_PHRASES).get(slot) or _DEFAULT_PHRASES["almuerzo"]
+    idx = zlib.crc32(seed_name.encode("utf-8")) % len(phrases) if seed_name else 0
+    return phrases[idx]
+
 
 
 def _pick_phrase(slot, seed_name=""):
@@ -244,25 +242,58 @@ def extract_slot_from_filename(filename):
 
 
 # ------------------------------------------------------------------
+# Mapa de detalle: dónde está el producto
+# ------------------------------------------------------------------
+
+def _detail_map(img):
+    """Mapa chico (ancho 200) de 'detalle visual': bordes difuminados.
+    Zonas claras = producto/detalle; zonas oscuras = fondo liso o desenfocado."""
+    small = img.convert("L").resize((200, max(1, int(img.height * 200 / img.width))), Image.BILINEAR)
+    edges = small.filter(ImageFilter.FIND_EDGES).filter(ImageFilter.GaussianBlur(4))
+    return edges
+
+
+def _region_detail(dmap, base_size, box):
+    """Detalle promedio (0-255) de un rectángulo de la imagen original."""
+    W, H = base_size
+    sx, sy = dmap.width / W, dmap.height / H
+    x0 = max(0, int(box[0] * sx)); y0 = max(0, int(box[1] * sy))
+    x1 = min(dmap.width, int(box[2] * sx)); y1 = min(dmap.height, int(box[3] * sy))
+    if x1 <= x0 or y1 <= y0:
+        return 255.0
+    return ImageStat.Stat(dmap.crop((x0, y0, x1, y1))).mean[0]
+
+
+def _best_position(dmap, base_size, layer_size, candidates, bias=None):
+    """Elige la posición (x, y) cuyo rectángulo tape menos detalle.
+    bias: dict {indice: descuento} para preferir posiciones clásicas en empates."""
+    best, best_score = candidates[0], None
+    for i, (x, y) in enumerate(candidates):
+        box = (x, y, x + layer_size[0], y + layer_size[1])
+        score = _region_detail(dmap, base_size, box)
+        if bias and i in bias:
+            score -= bias[i]
+        if best_score is None or score < best_score:
+            best, best_score = (x, y), score
+    return best
+
+
+# ------------------------------------------------------------------
 # Piezas del diseño
 # ------------------------------------------------------------------
 
 def _ref(base):
-    """Dimensión de referencia para escalar (soporta fotos apaisadas)."""
     W, H = base.size
     return min(W, int(H * 0.8))
 
 
-def _paste_logo_center(base):
-    """Logo grande centrado arriba, con sombra suave (sin tarjeta blanca)."""
-    W, H = base.size
-    ref = _ref(base)
+def _build_logo(ref):
+    """Logo con sombra sobre lienzo transparente (para pegar donde convenga)."""
     logo = Image.open(config.LOGO_PATH).convert("RGBA")
-    target_w = int(ref * getattr(config, "FLYER_LOGO_WIDTH_RATIO_V2", 0.40))
+    target_w = int(ref * getattr(config, "FLYER_LOGO_WIDTH_RATIO_V2", 0.38))
     ratio = target_w / logo.width
     logo = logo.resize((target_w, int(logo.height * ratio)), Image.LANCZOS)
 
-    # sombra: silueta del logo desplazada y difuminada
     alpha = logo.split()[3]
     shadow = Image.new("RGBA", logo.size, (0, 0, 0, 0))
     shadow.putalpha(alpha.point(lambda a: int(a * 0.55)))
@@ -271,58 +302,32 @@ def _paste_logo_center(base):
     canvas.alpha_composite(shadow, (blur * 3 + int(ref * 0.006), blur * 3 + int(ref * 0.010)))
     canvas = canvas.filter(ImageFilter.GaussianBlur(blur))
     canvas.alpha_composite(logo, (blur * 3, blur * 3))
-
-    y = int(ref * 0.025)
-    base.alpha_composite(canvas, ((W - canvas.width) // 2, y))
-    return y + canvas.height - blur * 3  # borde inferior aprox del logo
+    return canvas
 
 
-def _ribbon(base, text, font, x, y, bg, fg, angle=-2.5, pad_x_ratio=0.55, pad_y_ratio=0.30):
-    """Cinta de color inclinada con sombra dura (estilo póster) y texto adentro.
-    Devuelve la altura efectiva ocupada (para apilar la siguiente cinta)."""
-    ref = _ref(base)
+def _ribbon_layer(text, font, ref, bg, fg, angle=-2.5, pad_x_ratio=0.55, pad_y_ratio=0.30):
+    """Cinta de color inclinada con sombra dura, sobre lienzo transparente."""
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     pad_x, pad_y = int(th * pad_x_ratio), int(th * pad_y_ratio)
     w, h = tw + pad_x * 2, th + pad_y * 2
-    off = max(3, int(ref * 0.008))  # sombra dura desplazada
+    off = max(3, int(ref * 0.008))
 
     layer = Image.new("RGBA", (w + off * 3, h + off * 3), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     r = max(2, int(h * 0.10))
-    d.rounded_rectangle([off, off, off + w, off + h], radius=r, fill=(15, 15, 17, 200))  # sombra
+    d.rounded_rectangle([off, off, off + w, off + h], radius=r, fill=(15, 15, 17, 200))
     d.rounded_rectangle([0, 0, w, h], radius=r, fill=bg)
     d.text((pad_x - bbox[0], pad_y - bbox[1]), text, font=font, fill=fg)
 
     if angle:
         layer = layer.rotate(angle, expand=True, resample=Image.BICUBIC)
-
-    base.alpha_composite(layer, (x, y))
-    return int(layer.height * 0.82)  # solapado leve entre cintas
+    return layer
 
 
-def _split_headline(text, font_path, max_width, size):
-    """Si el titular no entra en una línea con buen tamaño, lo parte en dos."""
-    font = _load_font(font_path, size)
-    bbox = font.getbbox(text)
-    if bbox[2] - bbox[0] <= max_width:
-        return [text]
-    words = text.split()
-    if len(words) < 2:
-        return [text]
-    best, best_diff = 1, None
-    for i in range(1, len(words)):
-        l1, l2 = " ".join(words[:i]), " ".join(words[i:])
-        diff = abs(len(l1) - len(l2))
-        if best_diff is None or diff < best_diff:
-            best, best_diff = i, diff
-    return [" ".join(words[:best]), " ".join(words[best:])]
-
-
-def _draw_script_accent(base, text, x, y):
-    """Línea manuscrita (Pacifico) con sombra, estilo firma."""
-    ref = _ref(base)
-    font = _fit_font(_SCRIPT_FONT_PATH, text, base.width * 0.7, int(ref * 0.055))
+def _script_layer(text, ref, max_width):
+    """Línea manuscrita (Pacifico) con sombra, sobre lienzo transparente."""
+    font = _fit_font(_SCRIPT_FONT_PATH, text, max_width, int(ref * 0.055))
     bbox = font.getbbox(text)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     pad = int(th * 0.5)
@@ -333,8 +338,60 @@ def _draw_script_accent(base, text, x, y):
     layer = layer.filter(ImageFilter.GaussianBlur(max(2, int(ref * 0.005))))
     d = ImageDraw.Draw(layer)
     d.text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=BLANCO)
-    base.alpha_composite(layer, (x, y))
-    return layer.height
+    return layer
+
+
+def _split_headline(text, font_path, max_width, size):
+    font = _load_font(font_path, size)
+    bbox = font.getbbox(text)
+    if bbox[2] - bbox[0] <= max_width:
+        return [text]
+    words = text.split()
+    if len(words) < 2:
+        return [text]
+    best, best_diff = 1, None
+    for i in range(1, len(words)):
+        diff = abs(len(" ".join(words[:i])) - len(" ".join(words[i:])))
+        if best_diff is None or diff < best_diff:
+            best, best_diff = i, diff
+    return [" ".join(words[:best]), " ".join(words[best:])]
+
+
+def _build_text_block(base, theme, headline, subtitle, accent):
+    """Arma el bloque completo (cintas + acento manuscrito) sobre un lienzo
+    transparente, para poder medirlo y ubicarlo donde menos tape."""
+    W, H = base.size
+    ref = _ref(base)
+    max_w = int(W * 0.80)
+
+    head_size = int(ref * 0.100)
+    lines = _split_headline(headline.upper(), _HEADLINE_FONT_PATH, max_w - int(head_size * 1.1), head_size)
+
+    layers, y, x_off = [], 0, 0
+    for i, line in enumerate(lines):
+        font = _fit_font(_HEADLINE_FONT_PATH, line, max_w - int(head_size * 1.1), head_size)
+        bg, fg = (theme["c1"], theme["t1"]) if i % 2 == 0 else (theme["c2"], theme["t2"])
+        lay = _ribbon_layer(line, font, ref, bg, fg)
+        layers.append((lay, x_off, y))
+        y += int(lay.height * 0.82)
+        x_off += int(ref * 0.030)
+
+    sub_font = _fit_font(_SANS_FONT_PATH, subtitle.upper(), int(max_w * 0.9), int(ref * 0.036))
+    lay = _ribbon_layer(subtitle.upper(), sub_font, ref, theme["c3"], theme["t3"],
+                        pad_x_ratio=0.75, pad_y_ratio=0.45)
+    layers.append((lay, int(ref * 0.015), y + int(ref * 0.006)))
+    y += int(lay.height * 0.95) + int(ref * 0.014)
+
+    if accent:
+        lay = _script_layer(accent, ref, int(W * 0.6))
+        layers.append((lay, int(ref * 0.05), y))
+        y += lay.height
+
+    block_w = max(x + lay.width for lay, x, _ in layers)
+    block = Image.new("RGBA", (block_w, y + int(ref * 0.01)), (0, 0, 0, 0))
+    for lay, x, yy in layers:
+        block.alpha_composite(lay, (x, yy))
+    return block
 
 
 def _draw_heart(draw, cx, cy, size, color):
@@ -345,7 +402,6 @@ def _draw_heart(draw, cx, cy, size, color):
 
 
 def _draw_footer_pill(base, text):
-    """Píldora blanca semitransparente abajo, con corazón rojo + texto."""
     W, H = base.size
     ref = _ref(base)
     font = _fit_font(_SANS_FONT_PATH, text, W * 0.72, int(ref * 0.033))
@@ -372,14 +428,13 @@ def _draw_footer_pill(base, text):
 
 
 # ------------------------------------------------------------------
-# Diseño completo
+# Diseño completo con colocación inteligente
 # ------------------------------------------------------------------
 
 def apply_full_design(image_bytes, slot, seed_name=""):
     """
-    Aplica el diseño estilo póster sobre la foto original y devuelve los bytes
-    JPEG listos para subir a 'editadas'. seed_name (el nombre del archivo
-    original) define qué frase de la franja se usa, para variar entre fotos.
+    Aplica el diseño estilo póster sobre la foto original, ubicando el logo y
+    el bloque de texto donde MENOS tapen el producto, y devuelve bytes JPEG.
     """
     slot = slot or "almuerzo"
     theme = _SLOT_THEME.get(slot, _SLOT_THEME["almuerzo"])
@@ -388,30 +443,44 @@ def apply_full_design(image_bytes, slot, seed_name=""):
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
     W, H = img.size
     ref = _ref(img)
+    dmap = _detail_map(img)
+    margin = int(ref * 0.045)
 
-    logo_bottom = _paste_logo_center(img)
+    # --- logo: arriba, en la posición horizontal con menos producto ---
+    logo = _build_logo(ref)
+    y_logo = int(ref * 0.02)
+    logo_candidates = [
+        ((W - logo.width) // 2, y_logo),          # centro (clásico)
+        (margin, y_logo),                          # izquierda
+        (W - logo.width - margin, y_logo),         # derecha
+    ]
+    lx, ly = _best_position(dmap, (W, H), logo.size, logo_candidates, bias={0: 8})
+    img.alpha_composite(logo, (lx, ly))
+    logo_bottom = ly + logo.height - int(ref * 0.03)
 
-    # --- bloque de cintas, alineado a la izquierda como en los pósters ---
-    x = int(W * 0.055)
-    y = logo_bottom + int(ref * 0.030)
-    max_w = int(W * 0.86)
+    # --- bloque de texto: la combinación (altura x lado) que menos tape ---
+    block = _build_text_block(img, theme, headline, subtitle,
+                              getattr(config, "FLYER_ACCENT_TEXT", "Lomas de Zamora"))
+    x_left = int(W * 0.055)
+    x_right = max(x_left, W - block.width - int(W * 0.055))
+    footer_space = int(H * 0.115)
 
-    head_size = int(ref * 0.105)
-    lines = _split_headline(headline.upper(), _HEADLINE_FONT_PATH, max_w - int(head_size * 1.1), head_size)
-    for i, line in enumerate(lines):
-        font = _fit_font(_HEADLINE_FONT_PATH, line, max_w - int(head_size * 1.1), head_size)
-        bg, fg = (theme["c1"], theme["t1"]) if i % 2 == 0 else (theme["c2"], theme["t2"])
-        used = _ribbon(img, line, font, x + i * int(ref * 0.030), y, bg, fg)
-        y += used
+    ys = [logo_bottom + int(ref * 0.030)]                       # bajo el logo (clásico)
+    y_mid = int(H * 0.42)
+    y_low = H - footer_space - block.height
+    if y_mid > ys[0] + int(ref * 0.05) and y_mid + block.height < y_low:
+        ys.append(y_mid)
+    if y_low > ys[0] + int(ref * 0.05):
+        ys.append(y_low)
 
-    sub_font = _fit_font(_SANS_FONT_PATH, subtitle.upper(), max_w * 0.9, int(ref * 0.037))
-    used = _ribbon(img, subtitle.upper(), sub_font, x + int(ref * 0.015), y + int(ref * 0.006),
-                   theme["c3"], theme["t3"], pad_x_ratio=0.75, pad_y_ratio=0.45)
-    y += used + int(ref * 0.014)
-
-    accent = getattr(config, "FLYER_ACCENT_TEXT", "Lomas de Zamora")
-    if accent:
-        _draw_script_accent(img, accent, x + int(ref * 0.05), y)
+    candidates, bias = [], {}
+    for i, y in enumerate(ys):
+        for x in (x_left, x_right):
+            if i == 0 and x == x_left:
+                bias[len(candidates)] = 6  # leve preferencia por el layout clásico
+            candidates.append((x, y))
+    bx, by = _best_position(dmap, (W, H), block.size, candidates, bias=bias)
+    img.alpha_composite(block, (bx, by))
 
     footer = getattr(config, "FLYER_FOOTER_TEXT", "Hecho en casa, todos los días")
     if footer:
