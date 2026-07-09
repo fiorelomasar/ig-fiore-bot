@@ -302,6 +302,51 @@ def _best_position(dmap, base_size, layer_size, candidates, bias=None):
 
 
 # ------------------------------------------------------------------
+# Recorte al formato del feed de Instagram (4:5)
+# ------------------------------------------------------------------
+
+# Instagram solo acepta fotos de feed entre 4:5 (vertical) y 1.91:1 (apaisada).
+# Las fotos de celular (3:4, 9:16) son más verticales que 4:5 y la API las
+# rechaza con error 400, así que se recortan a 4:5 conservando el producto.
+_FEED_RATIO_MIN = 4 / 5      # ancho/alto mínimo (vertical máxima)
+_FEED_RATIO_MAX = 1.91       # ancho/alto máximo (apaisada máxima)
+_FEED_MAX_WIDTH = 1440       # ancho máximo recomendado por Meta
+
+
+def _crop_to_feed(img):
+    """Recorta la imagen al rango de proporciones válido para el feed,
+    eligiendo la ventana de recorte que más producto conserva (según el
+    mapa de saliencia). Después limita el ancho a 1440px."""
+    W, H = img.size
+    ratio = W / H
+
+    if ratio < _FEED_RATIO_MIN:            # demasiado vertical: recortar alto
+        new_h = int(W / _FEED_RATIO_MIN)
+        dmap = _detail_map(img)
+        best_y, best_score = 0, -1.0
+        for frac in (0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0):
+            y = int((H - new_h) * frac)
+            score = _region_detail(dmap, (W, H), (0, y, W, y + new_h))
+            if score > best_score:          # acá se busca MÁXIMO detalle adentro
+                best_y, best_score = y, score
+        img = img.crop((0, best_y, W, best_y + new_h))
+    elif ratio > _FEED_RATIO_MAX:          # demasiado apaisada: recortar ancho
+        new_w = int(H * _FEED_RATIO_MAX)
+        dmap = _detail_map(img)
+        best_x, best_score = 0, -1.0
+        for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
+            x = int((W - new_w) * frac)
+            score = _region_detail(dmap, (W, H), (x, 0, x + new_w, H))
+            if score > best_score:
+                best_x, best_score = x, score
+        img = img.crop((best_x, 0, best_x + new_w, H))
+
+    if img.width > _FEED_MAX_WIDTH:
+        img = img.resize((_FEED_MAX_WIDTH, int(img.height * _FEED_MAX_WIDTH / img.width)), Image.LANCZOS)
+    return img
+
+
+# ------------------------------------------------------------------
 # Piezas del diseño
 # ------------------------------------------------------------------
 
@@ -465,6 +510,7 @@ def apply_full_design(image_bytes, slot, seed_name=""):
     headline, subtitle = _pick_phrase(slot, seed_name)
 
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
+    img = _crop_to_feed(img)   # asegurar proporción válida para Instagram
     W, H = img.size
     ref = _ref(img)
     dmap = _detail_map(img)
