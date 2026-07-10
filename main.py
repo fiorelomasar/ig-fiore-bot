@@ -93,8 +93,10 @@ def publicar_siguiente(service):
 
     try:
         caption = config.get_caption(slot)
-        media_id = instagram_api.publish_image(public_url, caption=caption)
-        print(f"[publicar] ¡Publicado en Instagram! (franja: {slot}) media_id={media_id}")
+        es_historia = slot in watermark.story_slots()
+        media_id = instagram_api.publish_image(public_url, caption=caption, es_historia=es_historia)
+        tipo = "historia" if es_historia else "post"
+        print(f"[publicar] ¡Publicado en Instagram como {tipo}! (franja: {slot}) media_id={media_id}")
     finally:
         temp_hosting.remove_from_temp_hosting(siguiente["name"])
 
