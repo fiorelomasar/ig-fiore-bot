@@ -20,6 +20,14 @@ import config
 
 SLOTS = ("desayuno", "almuerzo", "merienda", "cena")
 
+# Franjas que se publican como HISTORIA (9:16). El resto va como post del feed
+# (4:5). Se puede pisar desde config.py con STORY_SLOTS = ("...",).
+_DEFAULT_STORY_SLOTS = ("desayuno", "almuerzo", "merienda")
+
+
+def story_slots():
+    return tuple(getattr(config, "STORY_SLOTS", _DEFAULT_STORY_SLOTS))
+
 # ------------------------------------------------------------------
 # Fuentes
 # ------------------------------------------------------------------
@@ -347,6 +355,36 @@ def _crop_to_feed(img):
 
 
 # ------------------------------------------------------------------
+# Lienzo de historia (9:16): foto centrada sobre fondo difuminado
+# ------------------------------------------------------------------
+
+_STORY_W, _STORY_H = 1080, 1920
+
+
+def _make_story_canvas(img):
+    """Arma el lienzo 9:16 típico de historias: la foto completa centrada,
+    sobre una versión ampliada, difuminada y oscurecida de sí misma."""
+    from PIL import ImageEnhance
+
+    # fondo: recorte "cover" al 9:16, difuminado y oscurecido
+    scale = max(_STORY_W / img.width, _STORY_H / img.height)
+    bg = img.resize((int(img.width * scale) + 1, int(img.height * scale) + 1), Image.BILINEAR)
+    x = (bg.width - _STORY_W) // 2
+    y = (bg.height - _STORY_H) // 2
+    bg = bg.crop((x, y, x + _STORY_W, y + _STORY_H)).filter(ImageFilter.GaussianBlur(35))
+    bg = ImageEnhance.Brightness(bg.convert("RGB")).enhance(0.62).convert("RGBA")
+
+    # frente: la foto entera, ocupando el ancho completo
+    scale = _STORY_W / img.width
+    fg_h = int(img.height * scale)
+    if fg_h > int(_STORY_H * 0.72):          # foto muy alta: limitar para dejar aire
+        scale = (_STORY_H * 0.72) / img.height
+    fg = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
+    bg.alpha_composite(fg, ((_STORY_W - fg.width) // 2, (_STORY_H - fg.height) // 2))
+    return bg
+
+
+# ------------------------------------------------------------------
 # Piezas del diseño
 # ------------------------------------------------------------------
 
@@ -470,7 +508,7 @@ def _draw_heart(draw, cx, cy, size, color):
     draw.polygon([(cx - 2 * r, cy - r * 0.6), (cx + 2 * r, cy - r * 0.6), (cx, cy + 2 * r)], fill=color)
 
 
-def _draw_footer_pill(base, text):
+def _draw_footer_pill(base, text, bottom_ratio=0.030):
     W, H = base.size
     ref = _ref(base)
     font = _fit_font(_SANS_FONT_PATH, text, W * 0.72, int(ref * 0.033))
@@ -493,7 +531,7 @@ def _draw_footer_pill(base, text):
     _draw_heart(d, 2 + pad_x + heart // 2, 2 + pill_h // 2, heart, ROJO)
     d.text((2 + pad_x + heart + gap - bbox[0], 2 + pad_y - bbox[1]), text, font=font, fill=(45, 40, 38, 255))
 
-    base.alpha_composite(pill, ((W - pill.width) // 2, int(H - pill.height - H * 0.030)))
+    base.alpha_composite(pill, ((W - pill.width) // 2, int(H - pill.height - H * bottom_ratio)))
 
 
 # ------------------------------------------------------------------
@@ -509,16 +547,22 @@ def apply_full_design(image_bytes, slot, seed_name=""):
     theme = _SLOT_THEME.get(slot, _SLOT_THEME["almuerzo"])
     headline, subtitle = _pick_phrase(slot, seed_name)
 
+    es_historia = slot in story_slots()
+
     img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-    img = _crop_to_feed(img)   # asegurar proporción válida para Instagram
+    if es_historia:
+        img = _make_story_canvas(img)     # lienzo 9:16 con fondo difuminado
+    else:
+        img = _crop_to_feed(img)          # asegurar proporción válida para el feed
     W, H = img.size
     ref = _ref(img)
     dmap = _detail_map(img)
     margin = int(ref * 0.045)
 
     # --- logo: arriba, en la posición horizontal con menos producto ---
+    # En historias se baja un poco: Instagram superpone tu usuario arriba.
     logo = _build_logo(ref)
-    y_logo = int(ref * 0.02)
+    y_logo = int(H * 0.055) if es_historia else int(ref * 0.02)
     logo_candidates = [
         ((W - logo.width) // 2, y_logo),          # centro (clásico)
         (margin, y_logo),                          # izquierda
@@ -532,7 +576,7 @@ def apply_full_design(image_bytes, slot, seed_name=""):
     # Si toda la foto está ocupada por producto, se prueba con un bloque más
     # chico (85% y 72%) hasta que lo tapado sea aceptable. ---
     accent = getattr(config, "FLYER_ACCENT_TEXT", "Lomas de Zamora")
-    footer_space = int(H * 0.115)
+    footer_space = int(H * (0.16 if es_historia else 0.115))
     best_overall = None
 
     for scale in (1.0, 0.85, 0.72):
@@ -567,7 +611,8 @@ def apply_full_design(image_bytes, slot, seed_name=""):
 
     footer = getattr(config, "FLYER_FOOTER_TEXT", "Hecho en casa, todos los días")
     if footer:
-        _draw_footer_pill(img, footer)
+        # En historias se sube: abajo Instagram superpone la caja de respuesta.
+        _draw_footer_pill(img, footer, bottom_ratio=0.075 if es_historia else 0.030)
 
     out = io.BytesIO()
     img.convert("RGB").save(out, format="JPEG", quality=92)
