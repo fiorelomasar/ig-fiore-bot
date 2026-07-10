@@ -25,13 +25,17 @@ def _check(resp):
     resp.raise_for_status()
 
 
-def create_media_container(image_url, caption=None):
+def create_media_container(image_url, caption=None, es_historia=False):
     url = f"{GRAPH_BASE}/{config.IG_USER_ID}/media"
     payload = {
         "image_url": image_url,
-        "caption": caption or config.DEFAULT_CAPTION,
         "access_token": config.IG_ACCESS_TOKEN,
     }
+    if es_historia:
+        # Las historias no llevan caption y requieren media_type=STORIES
+        payload["media_type"] = "STORIES"
+    else:
+        payload["caption"] = caption or config.DEFAULT_CAPTION
     resp = requests.post(url, data=payload, timeout=60)
     _check(resp)
     return resp.json()["id"]
@@ -68,8 +72,12 @@ def publish_container(container_id):
     return resp.json()["id"]
 
 
-def publish_image(image_url, caption=None):
-    """Orquesta el flujo completo: crear container, esperar, publicar. Devuelve el media id publicado."""
-    container_id = create_media_container(image_url, caption=caption)
+def publish_image(image_url, caption=None, es_historia=False):
+    """Orquesta el flujo completo: crear container, esperar, publicar.
+    Con es_historia=True publica como historia (24 hs) en vez de post del feed.
+    Devuelve el media id publicado."""
+    tipo = "historia" if es_historia else "post"
+    print(f"[instagram] Publicando como {tipo}...")
+    container_id = create_media_container(image_url, caption=caption, es_historia=es_historia)
     wait_until_container_ready(container_id)
     return publish_container(container_id)
