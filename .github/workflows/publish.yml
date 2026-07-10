@@ -2,11 +2,13 @@ name: Publicar posts de Instagram
 
 on:
   schedule:
-    # Horarios en UTC (Argentina = UTC-3)
-    - cron: "0 11 * * *"   # 08:00 ART -> desayuno
-    - cron: "0 15 * * *"   # 12:00 ART -> almuerzo
-    - cron: "0 18 * * *"   # 15:00 ART -> merienda
-    - cron: "0 21 * * *"   # 18:00 ART -> cena
+    # Horarios en UTC (Argentina = UTC-3).
+    # Minuto 7 en vez de 0: GitHub saltea/retrasa mucho los crons en punto
+    # porque son los horarios más congestionados.
+    - cron: "7 11 * * *"   # ~08:07 ART -> desayuno (historia)
+    - cron: "7 15 * * *"   # ~12:07 ART -> almuerzo (historia)
+    - cron: "7 18 * * *"   # ~15:07 ART -> merienda (historia)
+    - cron: "7 21 * * *"   # ~18:07 ART -> cena (post del feed)
   workflow_dispatch:
     inputs:
       post_slot:
@@ -38,10 +40,10 @@ jobs:
             echo "POST_SLOT=${{ inputs.post_slot }}" >> "$GITHUB_ENV"
           else
             case "${{ github.event.schedule }}" in
-              "0 11 * * *") echo "POST_SLOT=desayuno" >> "$GITHUB_ENV" ;;
-              "0 15 * * *") echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
-              "0 18 * * *") echo "POST_SLOT=merienda" >> "$GITHUB_ENV" ;;
-              "0 21 * * *") echo "POST_SLOT=cena" >> "$GITHUB_ENV" ;;
+              "7 11 * * *") echo "POST_SLOT=desayuno" >> "$GITHUB_ENV" ;;
+              "7 15 * * *") echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
+              "7 18 * * *") echo "POST_SLOT=merienda" >> "$GITHUB_ENV" ;;
+              "7 21 * * *") echo "POST_SLOT=cena" >> "$GITHUB_ENV" ;;
               *) echo "POST_SLOT=" >> "$GITHUB_ENV" ;;
             esac
           fi
