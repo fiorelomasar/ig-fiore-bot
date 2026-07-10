@@ -1,5 +1,4 @@
 name: Publicar posts de Instagram
-
 on:
   schedule:
     # Horarios en UTC (Argentina = UTC-3).
@@ -21,10 +20,8 @@ on:
           - merienda
           - cena
         default: desayuno
-
 permissions:
   contents: write   # necesario para que el script pueda commitear/pushear temp_hosting
-
 jobs:
   publicar:
     runs-on: ubuntu-latest
@@ -33,29 +30,27 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Determinar franja horaria (POST_SLOT)
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "POST_SLOT=${{ inputs.post_slot }}" >> "$GITHUB_ENV"
           else
-            case "${{ github.event.schedule }}" in
-              "7 11 * * *") echo "POST_SLOT=desayuno" >> "$GITHUB_ENV" ;;
-              "7 15 * * *") echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
-              "7 18 * * *") echo "POST_SLOT=merienda" >> "$GITHUB_ENV" ;;
-              "7 21 * * *") echo "POST_SLOT=cena" >> "$GITHUB_ENV" ;;
-              *) echo "POST_SLOT=" >> "$GITHUB_ENV" ;;
-            esac
+            # Se decide por la hora UTC real del momento de ejecución.
+            # Así funciona aunque el cron dispare tarde o cambie el texto del cron.
+            HORA_UTC=$(date -u +%H)
+            if   [ "$HORA_UTC" -ge 10 ] && [ "$HORA_UTC" -lt 14 ]; then echo "POST_SLOT=desayuno" >> "$GITHUB_ENV"
+            elif [ "$HORA_UTC" -ge 14 ] && [ "$HORA_UTC" -lt 17 ]; then echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV"
+            elif [ "$HORA_UTC" -ge 17 ] && [ "$HORA_UTC" -lt 20 ]; then echo "POST_SLOT=merienda" >> "$GITHUB_ENV"
+            else echo "POST_SLOT=cena" >> "$GITHUB_ENV"
+            fi
           fi
-
+          echo "Franja asignada: $(grep POST_SLOT "$GITHUB_ENV")"
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-
       - name: Ejecutar bot
         env:
           POST_SLOT: ${{ env.POST_SLOT }}
