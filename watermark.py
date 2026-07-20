@@ -18,11 +18,12 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 import config
 
-SLOTS = ("desayuno", "almuerzo", "merienda", "cena")
+SLOTS = ("desayuno", "almuerzo")
 
 # Franjas que se publican como HISTORIA (9:16). El resto va como post del feed
 # (4:5). Se puede pisar desde config.py con STORY_SLOTS = ("...",).
-_DEFAULT_STORY_SLOTS = ("desayuno", "almuerzo", "merienda")
+# Esquema actual: las DOS franjas van como historia (mañana dulce / mediodía salado).
+_DEFAULT_STORY_SLOTS = ("desayuno", "almuerzo")
 
 
 def story_slots():
@@ -150,8 +151,8 @@ def _pick_phrase(slot, seed_name=""):
     return phrases[idx]
 
 
-_DULCE = ["desayuno", "merienda"]
-_SALADO = ["almuerzo", "cena"]
+_DULCE = ["desayuno"]   # dulce -> historia de la mañana
+_SALADO = ["almuerzo"]  # salado -> historia del mediodía
 
 _DEFAULT_PRODUCT_SLOTS = {
     # dulces / panificados -> desayuno y merienda
