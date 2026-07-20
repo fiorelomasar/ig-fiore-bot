@@ -1,8 +1,8 @@
 # Bot de publicación automática en Instagram — Confitería
 
-Publica 4 posts por día en Instagram (desayuno, almuerzo, merienda y cena) con imágenes
-de tus productos, editadas
-automáticamente con tu nombre/logo. Todo con herramientas gratuitas.
+Publica 2 historias por día en Instagram (mañana con algo dulce, mediodía con algo salado)
+con imágenes de tus productos, editadas automáticamente con tu nombre/logo. Todo con
+herramientas gratuitas.
 
 ## Flujo
 
@@ -23,7 +23,7 @@ movimiento manual en Drive es el paso de aprobación. Cuando hay varias imágene
 esperando en `aprobadas`, en cada corrida se publica siempre la última que agregaste
 (orden: de la más nueva a la más vieja).
 
-Corre 4 veces al día vía GitHub Actions (gratis, hasta 2000 min/mes en repos privados,
+Corre 2 veces al día vía GitHub Actions (gratis, hasta 2000 min/mes en repos privados,
 ilimitado en repos públicos).
 
 ---
@@ -134,15 +134,17 @@ Ajustá al menos:
 
 ## Horarios de publicación
 
-Se publican **4 posts por día**, cada uno con un caption acorde al momento (definidos en
-`config.py`, sección `CAPTIONS`):
+Se publican **2 historias por día**. La de la mañana lleva un producto dulce y la del
+mediodía uno salado (el bot detecta dulce/salado por el nombre del archivo original):
 
-| Franja | Hora (Argentina) | Hora (UTC, la que usa el cron) |
-|---|---|---|
-| Desayuno | 08:00 | 11:00 |
-| Almuerzo | 12:00 | 15:00 |
-| Merienda | 15:00 | 18:00 |
-| Cena | 18:00 | 21:00 |
+| Franja | Contenido | Tipo | Hora (Argentina) | Hora (UTC, la que usa el cron) |
+|---|---|---|---|---|
+| Mañana (`desayuno`) | dulce | Historia | 08:00 | 11:00 |
+| Mediodía (`almuerzo`) | salado | Historia | 12:00 | 15:00 |
+
+> Nota: las historias de Instagram **no llevan caption** (la Graph API no lo permite en
+> `STORIES`). Todo el texto va sobre la propia imagen, en el banner tipo flyer que arma el
+> bot. Por eso la sección `CAPTIONS` de `config.py` queda sin uso con este esquema.
 
 Si tu huso horario cambia (horario de verano, etc.) o querés otros horarios, editá los
 `cron` en `.github/workflows/publish.yml` — están en UTC — y actualizá también el `case`
@@ -153,11 +155,11 @@ posts de Instagram → Run workflow**, eligiendo la franja en el desplegable.
 
 ## Límites a tener en cuenta (todo gratuito, pero con límites)
 
-- Graph API: máx. 25 publicaciones por cuenta de Instagram cada 24hs (muy por encima de 3/día).
+- Graph API: máx. 25 publicaciones por cuenta de Instagram cada 24hs (muy por encima de 2/día).
 - El token de acceso de larga duración vence a los 60 días y hay que renovarlo a mano
   (o automatizar la renovación más adelante).
 - GitHub Actions: gratis e ilimitado en repos públicos; en privados hay una cuota mensual
-  de minutos que este proyecto no debería agotar con 3 corridas cortas por día.
+  de minutos que este proyecto no debería agotar con 2 corridas cortas por día.
 
 ## Pendientes de tu lado
 
