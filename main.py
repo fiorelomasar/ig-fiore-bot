@@ -1,12 +1,12 @@
 """
-Script principal. Pensado para correr 4 veces por día vía GitHub Actions
-(desayuno, almuerzo, merienda, cena).
+Script principal. Pensado para correr 2 veces por día vía GitHub Actions
+(mañana / dulce y mediodía / salado, ambas como historia).
 
 En cada corrida:
   1) Busca imágenes nuevas en 'originales' que todavía no estén en 'editadas'.
-     Para cada una, genera las 4 versiones FINALES (logo + banner) por franja
-     horaria (desayuno/almuerzo/merienda/cena) y las sube a 'editadas', para
-     que revises el resultado terminado antes de aprobar.
+     Para cada una, genera las versiones FINALES (logo + banner) de las franjas
+     que le correspondan según sea dulce o salado (desayuno y/o almuerzo) y las
+     sube a 'editadas', para que revises el resultado terminado antes de aprobar.
   2) Toma la imagen MÁS RECIENTE de 'aprobadas' (la carpeta donde vos movés a
      mano la versión específica que diste el OK), la publica en Instagram tal
      cual está, y la mueve a 'publicadas'.
