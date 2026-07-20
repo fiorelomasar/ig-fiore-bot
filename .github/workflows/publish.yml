@@ -4,10 +4,8 @@ on:
     # Horarios en UTC (Argentina = UTC-3).
     # Minuto 7 en vez de 0: GitHub saltea/retrasa mucho los crons en punto
     # porque son los horarios más congestionados.
-    - cron: "7 11 * * *"   # ~08:07 ART -> desayuno (historia)
-    - cron: "7 15 * * *"   # ~12:07 ART -> almuerzo (historia)
-    - cron: "7 18 * * *"   # ~15:07 ART -> merienda (historia)
-    - cron: "7 21 * * *"   # ~18:07 ART -> cena (post del feed)
+    - cron: "7 11 * * *"   # ~08:07 ART -> mañana / dulce (historia)
+    - cron: "7 15 * * *"   # ~12:07 ART -> mediodía / salado (historia)
   workflow_dispatch:
     inputs:
       post_slot:
@@ -17,8 +15,6 @@ on:
         options:
           - desayuno
           - almuerzo
-          - merienda
-          - cena
         default: desayuno
 permissions:
   contents: write   # necesario para que el script pueda commitear/pushear temp_hosting
@@ -39,9 +35,7 @@ jobs:
             # así la franja es correcta aunque GitHub ejecute con retraso.
             case "${{ github.event.schedule }}" in
               "7 11 * * *") echo "POST_SLOT=desayuno" >> "$GITHUB_ENV" ;;
-              "7 15 * * *") echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
-              "7 18 * * *") echo "POST_SLOT=merienda" >> "$GITHUB_ENV" ;;
-              *)            echo "POST_SLOT=cena"     >> "$GITHUB_ENV" ;;
+              *)            echo "POST_SLOT=almuerzo" >> "$GITHUB_ENV" ;;
             esac
           fi
           echo "Franja asignada: $(grep POST_SLOT "$GITHUB_ENV")"
